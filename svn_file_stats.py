@@ -9,14 +9,14 @@ two (appears to be whitespace handling, perhaps line endings?)
 """
 
 import sys
-import os
 import re
 
 import pysvn
 
 from common import is_interesting, FileData, safe_author_name
 
-def gen_stats(root, project, interesting, not_interesting, options):
+
+def gen_stats(root, project, interesting, not_interesting, _):
     """
     root: the root svn url of the project we are generating stats for
     (does not need to be the root of the svn repo).  Must be a url,
@@ -41,19 +41,26 @@ def gen_stats(root, project, interesting, not_interesting, options):
     # not our project root
     repo_root = client.root_url_from_path(root)
 
-    interesting_fs = [f[0].repos_path for f in client.list(root, recurse=True) if
-                      is_interesting(f[0].repos_path, interesting, not_interesting) and f[0].kind == pysvn.node_kind.file]
+    interesting_fs = [
+        f[0].repos_path
+        for f in client.list(root, recurse=True)
+        if is_interesting(f[0].repos_path, interesting, not_interesting) and
+           f[0].kind == pysvn.node_kind.file
+    ]
 
     for f in interesting_fs:
         dev_experience = parse_dev_experience(f, client, repo_root)
         if dev_experience:
             fd = FileData(':'.join([project, f]))
             # don't take revisions that are 0 lines added and 0 removed, like properties
-            fd.dev_experience = [(dev, added, removed) for dev, added, removed in dev_experience if added or removed]
+            fd.dev_experience = [
+                (dev, added, removed) for dev, added, removed in dev_experience if added or removed
+            ]
             fd.cnt_lines = count_lines(f, client, repo_root)
             fd_line = fd.as_line()
             if fd_line.strip():
                 yield fd_line
+
 
 def parse_dev_experience(f, client, repo_root):
     """
@@ -146,21 +153,21 @@ def parse_dev_experience(f, client, repo_root):
             # on one occasion I saw a non-binary item that existed in
             # the filesystem with svn ls but errored out with a diff
             # against that revision.  Note the error and proceed.
-            print >> sys.stderr, "Error diffing %s %s and %s %s: " % \
-                  (old_path, str(old_rev), new_path, str(new_rev)), sys.exc_info()[0]
+            print(
+                f"Error diffing {old_path} {old_rev} and {new_path} {new_rev}: ",
+                sys.exc_info()[0],
+                file=sys.stderr,
+            )
         
     return dev_experience
+
 
 def count_lines(f, client, repo_root):
     """
     Count the lines in the file located at path f under repo root.
     """
-    txt = client.cat("%s%s" % (repo_root, f))
-    lines = txt.count('\n')
-    if not txt.endswith('\n'):
+    txt = client.cat(f"{repo_root}{f}")
+    lines = txt.count("\n")
+    if not txt.endswith("\n"):
         lines += 1
     return lines
-
-    
-
-    

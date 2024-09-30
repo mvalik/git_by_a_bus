@@ -7,15 +7,14 @@ Output of gen_stats should be exactly the same as the output of
 git_file_stats.gen_stats, but in practice they may differ by a line or
 two (appears to be whitespace handling, perhaps line endings?)
 """
-
-import sys
 import os
 import re
-
-from subprocess import Popen, PIPE
+import subprocess
+import sys
 
 from common import is_interesting, FileData, safe_author_name
-    
+
+
 def gen_stats(root, project, interesting, not_interesting, options):
     """
     root: the path a local, git controlled-directory that is the root
@@ -55,13 +54,13 @@ def gen_stats(root, project, interesting, not_interesting, options):
                     yield fd_line
 
 
-def count_lines(f):
-    fil = open(f, 'r')
-    count = 0
-    for line in fil:
-        count += 1
-    fil.close()
+def count_lines(f: str) -> int:
+    with open(f, 'r') as fil:
+        count = 0
+        for _ in fil:
+            count += 1
     return count
+
 
 def parse_experience(log):
     """
@@ -73,82 +72,68 @@ def parse_experience(log):
     # entry lines were zero separated with -z
     entry_lines = log.split('\0')
 
-    current_entry = []
-    
     for entry_line in entry_lines:
         if not entry_line.strip():
-            # blank entry line marks the end of an entry, we're ready to process
-            local_entry = current_entry
-            current_entry = []
-            if len(local_entry) < 2:
-                print >> sys.stderr, "Weird entry, cannot parse: %s\n-----" % '\n'.join(local_entry)
-                continue
-            author, changes = local_entry[:2]
-            author = safe_author_name(author)
-            try:
-                changes_split = re.split(r'\s+', changes)
-                # this can be two fields if there were file renames
-                # detected, in which case the file names are on the
-                # following entry lines, or three fields (third being
-                # the filename) if there were no file renames
-                lines_added, lines_removed = changes_split[:2]
-                lines_added = int(lines_added)
-                lines_removed = int(lines_removed)
-
-                # don't record revisions that don't have any removed or
-                # added lines...they mean nothing to our algorithm
-                if lines_added or lines_removed:
-                    exp.append((author, lines_added, lines_removed))
-            except ValueError:
-                print >> sys.stderr, "Weird entry, cannot parse: %s\n-----" % '\n'.join(local_entry)                    
-                continue
-        else:
-            # continue to aggregate the entry
-            lines = entry_line.split('\n')
-            current_entry.extend([line.strip() for line in lines])
+            continue
+        current_entry = entry_line.split('\n')
+        if len(current_entry) < 2:
+            continue
+        author, changes = current_entry[:2]
+        # only spaces has been changed - ignoring
+        if not changes.strip():
+            continue
+        author = safe_author_name(author)
+        m = re.match(r"^(\d+)\s+(\d+)\s+.*$", changes)
+        if not m:
+            continue
+        lines_added, lines_removed = m.groups()
+        if lines_added or lines_removed:
+            exp.append((author, lines_added, lines_removed))
 
     # we need the oldest log entries first.
     exp.reverse()
     return exp
-            
-def parse_dev_experience(f, git_exe):
+
+
+def parse_dev_experience(f: str, git_exe: str):
     """
     Run git log and parse the dev experience out of it.
     """
     # -z = null byte separate logs
     # -w = ignore all whitespace when calculating changed lines
     # --follow = follow file history through renames
-    # --numstat = print a final ws separated line of the form 'num_added_lines num_deleted_lines file_name'
+    # --numstat = print a final ws separated line of the form
+    #             'num_added_lines num_deleted_lines file_name'
     # --format=format:%an = use only the author name for the log msg format
-    git_cmd = ("%s log -z -w --follow --numstat --format=format:%%an" % git_exe).split(' ')
-    git_cmd.append(f)
-    git_p = Popen(git_cmd, stdout=PIPE)
-    (out, err) = git_p.communicate()
-    return parse_experience(out)
+    git_cmd = [git_exe, "log", "-z", "-w", "--follow", "--numstat", "--format=format:%an", f]
+    git_p = subprocess.run(git_cmd, capture_output=True, text=True)
+    return parse_experience(git_p.stdout)
 
-def git_ls(root, git_exe):
+
+def git_ls(root: str, git_exe: str):
     """
     List the entire tree that git is aware of in this directory.
     """
     # --full-tree = allow absolute path for final argument (pathname)
     # --name-only = don't show the git id for the object, just the file name
     # -r = recurse
-    git_cmd = ('%s ls-tree --full-tree --name-only -r HEAD' % git_exe).split(' ')
-    git_cmd.append(root)
-    git_p = Popen(git_cmd, stdout=PIPE)
-    files = git_p.communicate()[0].split('\n')
+    git_cmd = [git_exe, "ls-tree", "--full-tree", "--name-only", "-r", "HEAD", root]
+    git_p = subprocess.run(git_cmd, capture_output=True, text=True)
+    files = git_p.stdout.split('\n')
     return files
+
 
 def git_root(git_exe):
     """
     Given that we have chdir'd into a Git controlled dir, get the git
     root for purposes of adjusting paths.
     """
-    git_cmd = ('%s rev-parse --show-toplevel' % git_exe).split(' ')
-    git_p = Popen(git_cmd, stdout=PIPE)
-    return git_p.communicate()[0].strip()
+    git_cmd = [git_exe, "rev-parse", "--show-toplevel"]
+    git_p = subprocess.run(git_cmd, capture_output=True, text=True)
+    return git_p.stdout.strip()
 
-def prepare(root, git_exe):
+
+def prepare(root: str, git_exe: str):
     # first we have to get into the git repo to make the git_root work...
     os.chdir(root)
     # then we can change to the git root

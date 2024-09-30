@@ -10,15 +10,18 @@ carpoolers.
 """
 
 import sys
-import optparse
+
+from argparse import ArgumentParser
 
 from common import FileData, safe_author_name
+
 
 def get_bus_risk(dev, bus_risks, def_risk):
     if dev not in bus_risks:
         return def_risk
     else:
         return bus_risks[dev]
+
 
 def estimate_file_risks(lines, bus_risks, def_bus_risk):
     """
@@ -41,28 +44,33 @@ def estimate_file_risks(lines, bus_risks, def_bus_risk):
         fd.dev_risk = dev_risk
         yield fd.as_line()
 
+
 def parse_risk_file(risk_file, bus_risks):
-    risk_f = open(risk_file, 'r')
-    for line in risk_f:
-        line = line.strip()
-        if not line:
-            continue
-        dev, risk = line.split('=')
-        dev = safe_author_name(dev)
-        bus_risks[dev] = float(risk)
-    risk_f.close()
+    with open(risk_file, 'r') as risk_f:
+        for line in risk_f:
+            line = line.strip()
+            if not line:
+                continue
+            dev, risk = line.split('=')
+            dev = safe_author_name(dev)
+            bus_risks[dev] = float(risk)
+
 
 if __name__ == '__main__':
-    parser = optparse.OptionParser()
-    parser.add_option('-b', '--bus-risk', dest='bus_risk', metavar='FLOAT', default=0.1,
-                      help='The estimated probability that a dev will be hit by a bus in your analysis timeframe')
-    parser.add_option('-r', '--risk-file', dest='risk_file', metavar='FILE',
-                      help='File of dev=float lines (e.g. ejorgensen=0.4) with dev bus likelihoods')
-    options, args = parser.parse_args()
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-b", "--bus-risk", dest="bus_risk", metavar="FLOAT", default=0.1,
+        help="The estimated probability that a dev will be hit by a bus in your analysis timeframe"
+    )
+    parser.add_argument(
+        "-r", "--risk-file", dest="risk_file", metavar="FILE",
+        help="File of dev=float lines (e.g. ejorgensen=0.4) with dev bus likelihoods"
+    )
+    args = parser.parse_args()
 
-    bus_risks = {}
-    if options.risk_file:
-        parse_risk_file(options.risk_file, bus_risks)
+    bus_risks_options = {}
+    if args.risk_file:
+        parse_risk_file(args.risk_file, bus_risks_options)
     
-    for line in estimate_file_risks(sys.stdin, bus_risks, float(options.bus_risk)):
-        print line
+    for line in estimate_file_risks(sys.stdin, bus_risks_options, float(args.bus_risk)):
+        print(line)

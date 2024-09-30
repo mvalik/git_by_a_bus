@@ -10,14 +10,16 @@ import os
 import math
 import hashlib
 
-from optparse import OptionParser
+from argparse import ArgumentParser
+from collections import defaultdict
 
 from common import FileData, parse_departed_devs
 
 # we cut off any value below this as just noise.
 GLOBAL_CUTOFF = 10
 
-class Dat(object):
+
+class Dat:
     """
     A single piece of data for the aggregate routines to aggregate,
     using the a_* fields to grab the appropriate keys.
@@ -40,10 +42,11 @@ class Dat(object):
         self.val = val
 
     def __repr__(self):
-        return "valtype: %s, file_data: %s, dev: %s, val: %s " % (self.valtype,
-                                                                  self.file_data,
-                                                                  self.dev,
-                                                                  str(self.val))
+        return (
+            f"valtype: {self.valtype}, file_data: {self.file_data}, "
+            f"dev: {self.dev}, val: {self.val}"
+        )
+
 
 # a_* methods.
 #
@@ -57,8 +60,10 @@ class Dat(object):
 def a_unique(dat):
     return 'unique'
 
+
 def a_orphaned(dat):
     return 'orphaned'
+
 
 def a_dev(dat):
     if isinstance(dat.dev, list):
@@ -66,14 +71,18 @@ def a_dev(dat):
     else:
         return dat.dev
 
+
 def a_project(dat):
     return dat.file_data.project
+
 
 def a_fname(dat):
     return dat.file_data.fname
 
+
 def a_valtype(dat):
     return dat.valtype
+
 
 def agg(path, diction, dat):
     """
@@ -100,12 +109,15 @@ def agg(path, diction, dat):
         diction[last_k] = 0
     diction[last_k] += dat.val
 
+
 def agg_all(aggs, dat):
     for path, diction in aggs.items():
         agg(path, diction, dat)
 
+
 def create_agg(aggs, path):
     aggs[path] = {}
+
 
 def split_out_dev_vals(dev_vals, departed_devs):
     """
@@ -119,12 +131,6 @@ def split_out_dev_vals(dev_vals, departed_devs):
     the second the values held by departed devs.
     """
 
-    def is_departed(dev):
-        return dev in departed_devs
-
-    def is_not_departed(dev):
-        return dev not in departed_devs
-
     def add_dev_val_lookup(devs, lookup, val):
         devs.sort()
         lookup_str = '\0'.join(devs)
@@ -136,8 +142,8 @@ def split_out_dev_vals(dev_vals, departed_devs):
     departed_lookup = {}
     
     for devs, val in dev_vals:
-        present = filter(is_not_departed, devs)
-        departed = filter(is_departed, devs)
+        present = [dev for dev in devs if dev not in departed_devs]
+        departed = [dev for dev in devs if dev in departed_devs]
         if departed:
             departed.sort()                            
             if present:
@@ -156,6 +162,7 @@ def split_out_dev_vals(dev_vals, departed_devs):
                 
     return [(devs_lookup.split('\0'), val) for devs_lookup, val in lookup.items()], \
            [(dep_lookup.split('\0'), val) for dep_lookup, val in departed_lookup.items()]
+
 
 def summarize(lines, departed_devs):
     """
@@ -210,6 +217,7 @@ def summarize(lines, departed_devs):
 
     return aggs
 
+
 def tupelize(agg, tuples_and_vals, key_list):
     for k, v in agg.items():
         loc_key = list(key_list)
@@ -218,6 +226,7 @@ def tupelize(agg, tuples_and_vals, key_list):
             tuples_and_vals.append((tuple(loc_key), v))
         else:
             tupelize(v, tuples_and_vals, loc_key)
+
 
 def sort_agg(agg, desc):
     tuples_and_vals = []
@@ -228,6 +237,7 @@ def sort_agg(agg, desc):
         tuples_and_vals.reverse()
     tuples_and_vals = [t[1] for t in tuples_and_vals]
     return tuples_and_vals
+
 
 def by_valtype_html(valtype, nouns, noun, linker, limit):
     html = []
@@ -247,31 +257,42 @@ def by_valtype_html(valtype, nouns, noun, linker, limit):
     html.append("</table>") 
     return html
 
+
 def project_fname(project):
-    return os.path.join('projects', "%s.html" % project)
+    return os.path.join('projects', f"{project}.html")
+
 
 def project_linker(project):
-    return "<a href=\"%s\">%s</a>" % (project_fname(project), project)        
+    return f"<a href=\"{project_fname(project)}\">{project}</a>"
+
 
 def fname_fname(fname):
-    return os.path.join('files', "%s.html" % fname.replace(':', '__').replace(os.path.sep, '__'))
+    fname = fname.replace(':', '__').replace(os.path.sep, '__')
+    return os.path.join("files", f"{fname}.html")
+
 
 def fname_linker(fname):
-    return "<a href=\"%s\">%s</a>" % (fname_fname(fname), fname)    
+    return f"<a href=\"{fname_fname(fname)}\">{fname}</a>"
+
 
 def dev_fname(dev):
-    return os.path.join('devs', "%s.html" % hashlib.md5(dev).hexdigest())
+    return os.path.join('devs', f"{hashlib.md5(dev.encode()).hexdigest()}.html")
+
 
 def dev_linker(dev):
-    return "<a href=\"%s\">%s</a>" % (dev_fname(dev), dev)
+    return f"<a href=\"{dev_fname(dev)}\">{dev}</a>"
+
 
 def parent_linker(fnamer):
     def f(to_link):
-        return "<a href=\"%s\">%s</a>" % (os.path.join('..', fnamer(to_link)), to_link)        
+        p_link = os.path.join('..', fnamer(to_link))
+        return f"<a href=\"{p_link}\">{to_link}</a>"
     return f
+
 
 def summarize_by_valtype(agg_by_single, noun, linker):
     return summarize_top_by_valtype(agg_by_single, noun, linker, None)
+
 
 def summarize_top_by_valtype(agg_by_single, noun, linker, limit):
     html = []
@@ -282,9 +303,14 @@ def summarize_top_by_valtype(agg_by_single, noun, linker, limit):
         html.extend(by_valtype_html(valtype, nouns, noun, linker, limit))
     return html
 
+
 def add_global_explanation(html):
-    html.append('<p>Note: values smaller than %d have been truncated in the interest of space.</p>' % GLOBAL_CUTOFF)
+    html.append(
+        f'<p>Note: values smaller than {GLOBAL_CUTOFF} '
+        'have been truncated in the interest of space.</p>'
+    )
     html.append('<p>Note: the scale of the bars is relative only within, not across, tables.</p>')
+
 
 def create_index(aggs, output_dir):
     html = []
@@ -299,48 +325,67 @@ def create_index(aggs, output_dir):
     outfil.write('\n'.join(html))
     outfil.close()
 
+
 def create_detail_page(detail, noun, valtype_args, fname, custom_lines_f):
-    html = []
-    html.append("<html>\n<head><title>Git By a Bus Summary Results for %s: %s</title></head>\n<body>" % (noun, detail))
-    html.append("<p><a href=\"../index.html\">Index</a></p>")
-    html.append("<h1>Git by a Bus Summary Results for %s: %s</h1>" % (noun, detail))
+    html = [
+        "<html>",
+        f"<head><title>Git By a Bus Summary Results for {noun}: {detail}</title></head>",
+        "<body>",
+        "<p><a href=\"../index.html\">Index</a></p>",
+        f"<h1>Git by a Bus Summary Results for {noun}: {detail}</h1>"
+    ]
     add_global_explanation(html)
     if custom_lines_f:
         html.extend(custom_lines_f(detail, noun, valtype_args, fname))
     for vtarg in valtype_args:
         html.extend(summarize_top_by_valtype(vtarg[0], vtarg[1], vtarg[2], vtarg[3]))
     html.append("</body>\n</html>")
-    outfil = open(fname, 'w')
-    outfil.write('\n'.join(html))
-    outfil.close()
+    with open(fname, 'w') as outfil:
+        outfil.write('\n'.join(html))
 
-def create_detail_pages(output_dir, subdir, details, noun, detail_fname, aggs_with_nouns, custom_lines_f = None):
+
+def create_detail_pages(
+    output_dir, subdir, details, noun, detail_fname, aggs_with_nouns, custom_lines_f = None
+):
     try:
         os.mkdir(os.path.join(output_dir, subdir))
-    except:
+    except OSError:
         pass
 
     for detail in details:
         outfile_name = os.path.join(output_dir, detail_fname(detail))
-        vt_args = [(agg[detail], nouns, linker, None) for agg, nouns, linker in aggs_with_nouns if detail in agg]
+        vt_args = [
+            (agg[detail], nouns, linker, None)
+            for agg, nouns, linker in aggs_with_nouns if detail in agg
+        ]
         create_detail_page(detail, noun, vt_args, outfile_name, custom_lines_f)
+
 
 def create_project_pages(aggs, output_dir):
     dev_agg = aggs[(a_project, a_valtype, a_dev)]
     fname_agg = aggs[(a_project, a_valtype, a_fname)]
     projects = fname_agg.keys()
-    create_detail_pages(output_dir, 'projects', projects, 'Project', project_fname, [(dev_agg, 'Devs', parent_linker(dev_fname)),                                                                                                                     (fname_agg, 'Files', parent_linker(fname_fname))])
-
+    create_detail_pages(
+        output_dir,
+        'projects',
+        projects,
+        'Project',
+        project_fname,
+        [
+            (dev_agg, 'Devs', parent_linker(dev_fname)),
+            (fname_agg, 'Files', parent_linker(fname_fname))
+        ],
+    )
 
 
 def create_dev_pages(aggs, output_dir, departed_devs):
-
     # callback to pass into create_detail_pages to make
     #
     # * the links to individual devs making up a group and
     #
     # * the table of devs with most shared knowledge for individual
     # devs
+
     def dev_custom(devs, noun, valtype_args, fname):
         html = []
         linker = parent_linker(dev_fname)
@@ -379,30 +424,43 @@ def create_dev_pages(aggs, output_dir, departed_devs):
     project_agg = aggs[(a_dev, a_valtype, a_project)]
     fname_agg = aggs[(a_dev, a_valtype, a_fname)]
     devs = fname_agg.keys()
-    create_detail_pages(output_dir, 'devs', devs, 'Dev', dev_fname, [(project_agg, 'Projects', parent_linker(project_fname)),
-                                                                     (fname_agg, 'Files', parent_linker(fname_fname))], dev_custom)
+    create_detail_pages(
+        output_dir,
+        'devs',
+        devs,
+        'Dev',
+        dev_fname,
+        [
+            (project_agg, 'Projects', parent_linker(project_fname)),
+            (fname_agg, 'Files', parent_linker(fname_fname))
+        ],
+        dev_custom,
+    )
 
 def create_file_pages(aggs, output_dir):
     dev_agg = aggs[(a_fname, a_valtype, a_dev)]
     fnames = dev_agg.keys()
-    create_detail_pages(output_dir, 'files', fnames, 'File', fname_fname, [(dev_agg, 'Devs', parent_linker(dev_fname))])
+    create_detail_pages(
+        output_dir,
+        'files',
+        fnames,
+        'File',
+        fname_fname,
+        [
+            (dev_agg, 'Devs', parent_linker(dev_fname))
+        ],
+    )
 
-def add_dev_dev(dev_dev, dev1, dev2, diff):
-    if dev1 not in dev_dev:
-        dev_dev[dev1] = {}
-    dev_dev[dev1][dev2] = diff
 
 def read_dev_x_cmp(x_cmp_fname, make_sym):
-    dev_dev = {}
-    fil = open(x_cmp_fname, 'r')
-    for line in fil:
-        line = line.strip()
-        dev1, dev2, diff = line.split('\t')
-        diff = float(diff)
-        add_dev_dev(dev_dev, dev1, dev2, diff)
-        if make_sym:
-            add_dev_dev(dev_dev, dev2, dev1, diff)        
-    fil.close()
+    dev_dev = defaultdict(dict)
+    with open(x_cmp_fname, 'r') as fil:
+        for line in fil:
+            dev1, dev2, diff = line.strip().split('\t')
+            diff = float(diff)
+            dev_dev[dev1][dev2] = diff
+            if make_sym:
+                dev_dev[dev2][dev1] = diff
     return dev_dev
 
 def create_summary(lines, output_dir, departed_devs):
@@ -413,17 +471,20 @@ def create_summary(lines, output_dir, departed_devs):
     create_file_pages(aggs, output_dir)
     
 if __name__ == '__main__':
-    parser = OptionParser()
-    parser.add_option('-d', '--departed-dev-file', dest='departed_dev_file', metavar='FILE',
-                      help='File listing departed devs, one per line')
-    options, args = parser.parse_args()
+    parser = ArgumentParser()
+    parser.add_argument(
+        '-d', '--departed-dev-file', dest='departed_dev_file', metavar='FILE',
+        help='File listing departed devs, one per line'
+    )
+    parser.add_argument("output_path")
+    args = parser.parse_args()
 
     departed_devs = []
-    if options.departed_dev_file:
-        parse_departed_devs(options.departed_dev_file, departed_devs)
+    if args.departed_dev_file:
+        parse_departed_devs(args.departed_dev_file, departed_devs)
 
-    create_summary(sys.stdin, args[0], departed_devs)
+    create_summary(sys.stdin, args.output_path, departed_devs)
 
     # print to the tsv so if folks look there they get redirected
     # correctly
-    print "Summary is available at %s/index.html" % args[0]
+    print(f"Summary is available at {args.output_path}/index.html")

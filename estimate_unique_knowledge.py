@@ -24,12 +24,11 @@ for each revision in the log:
 """
 
 import sys
-import math
-import copy
 
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 from common import FileData
+
 
 def sequential_create_knowledge(dev_uniq, dev, adjustment):
     """
@@ -41,6 +40,7 @@ def sequential_create_knowledge(dev_uniq, dev, adjustment):
     if dev not in dev_uniq:
         dev_uniq[dev] = 0
     dev_uniq[dev] += adjustment
+
 
 def sequential_destroy_knowledge(adjustment, tot_knowledge, dev_uniq):
     """
@@ -56,6 +56,7 @@ def sequential_destroy_knowledge(adjustment, tot_knowledge, dev_uniq):
         k = dev_uniq[devs]
         k -= k * pct_to_destroy
         dev_uniq[devs] = k
+
 
 def sequential_share_knowledge_group(dev, shared_key_exploded, pct_to_share, dev_uniq):
     """
@@ -74,6 +75,7 @@ def sequential_share_knowledge_group(dev, shared_key_exploded, pct_to_share, dev
         dev_uniq[new_shared_key] = 0
     dev_uniq[new_shared_key] += amt_to_share
 
+
 def sequential_distribute_shared_knowledge(dev, shared_knowledge, tot_knowledge, dev_uniq):
     """
     Share the percent of knowledge represented by shared_knowledge of
@@ -83,10 +85,12 @@ def sequential_distribute_shared_knowledge(dev, shared_knowledge, tot_knowledge,
     pct_to_share = 0
     if tot_knowledge:
         pct_to_share = float(shared_knowledge) / float(tot_knowledge)
-    for shared_key in dev_uniq.keys():
+    # list is needed, since dictionary is being modified during the loop
+    for shared_key in list(dev_uniq.keys()):
         shared_key_exploded = shared_key.split('\0')
         if dev not in shared_key_exploded:
             sequential_share_knowledge_group(dev, shared_key_exploded, pct_to_share, dev_uniq)
+
 
 def sequential_estimate_uniq(fd, knowledge_churn_constant):
     """
@@ -119,7 +123,8 @@ def sequential_estimate_uniq(fd, knowledge_churn_constant):
     dev_uniq = [(shared_key.split('\0'), shared) for shared_key, shared in dev_uniq.items()]
     
     return dev_uniq, int(tot_knowledge)
- 
+
+
 def sequential(lines, model_args):
     """
     Entry point for the sequential algorithm.
@@ -130,22 +135,25 @@ def sequential(lines, model_args):
     tot_knowledge fields filled in.
     """
     knowledge_churn_constant = float(model_args[0])
-    for line in lines:
-        fd = FileData(line)
+    for ln in lines:
+        fd = FileData(ln)
         dev_uniq, tot_knowledge = sequential_estimate_uniq(fd, knowledge_churn_constant)
         fd.dev_uniq = dev_uniq
         fd.tot_knowledge = tot_knowledge
         yield fd.as_line()
 
-if __name__ == '__main__':
-    parser = OptionParser()
-    parser.add_option('--model', dest='model', metavar='MODEL[:MARG1[:MARG2]...]', default="sequential:0.1",
-                      help='Knowledge model to use, with arguments.')
-    options, args = parser.parse_args()
 
-    model = options.model.split(':')
+if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--model", dest="model", metavar="MODEL[:MARG1[:MARG2]...]",
+        default="sequential:0.1", help='Knowledge model to use, with arguments.'
+    )
+    args = parser.parse_args()
+
+    model = args.model.split(':')
     model_func = locals()[model[0]]
     model_args = model[1:]
     
     for line in model_func(sys.stdin, model_args):
-        print line
+        print(line)
